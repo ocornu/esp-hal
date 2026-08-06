@@ -122,6 +122,7 @@
 
 use core::marker::PhantomData;
 
+pub use embedded_can::{ExtendedId, Id, StandardId};
 use enumset::{EnumSet, EnumSetType};
 use procmacros::handler;
 
@@ -244,175 +245,13 @@ pub enum TwaiMode {
     ListenOnly,
 }
 
-/// Standard 11-bit TWAI Identifier (`0..=0x7FF`).
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct StandardId(u16);
-
-impl StandardId {
-    /// TWAI ID `0`, the highest priority.
-    pub const ZERO: Self = StandardId(0);
-
-    /// TWAI ID `0x7FF`, the lowest priority.
-    pub const MAX: Self = StandardId(0x7FF);
-
-    /// Tries to create a `StandardId` from a raw 16-bit integer.
-    ///
-    /// This will return `None` if `raw` is out of range of an 11-bit integer
-    /// (`> 0x7FF`).
-    #[inline]
-    pub fn new(raw: u16) -> Option<Self> {
-        if raw <= 0x7FF {
-            Some(StandardId(raw))
-        } else {
-            None
-        }
-    }
-
-    /// Creates a new `StandardId` without checking if it is inside the valid
-    /// range.
-    ///
-    /// # Safety
-    /// Using this method can create an invalid ID and is thus marked as unsafe.
-    #[inline]
-    pub const unsafe fn new_unchecked(raw: u16) -> Self {
-        StandardId(raw)
-    }
-
-    /// Returns TWAI Identifier as a raw 16-bit integer.
-    #[inline]
-    pub fn as_raw(&self) -> u16 {
-        self.0
-    }
-}
-
-#[instability::unstable]
-impl From<StandardId> for embedded_can::StandardId {
-    fn from(value: StandardId) -> Self {
-        embedded_can::StandardId::new(value.as_raw()).unwrap()
-    }
-}
-
-#[instability::unstable]
-impl From<embedded_can::StandardId> for StandardId {
-    fn from(value: embedded_can::StandardId) -> Self {
-        StandardId::new(value.as_raw()).unwrap()
-    }
-}
-
-/// Extended 29-bit TWAI Identifier (`0..=1FFF_FFFF`).
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct ExtendedId(u32);
-
-impl ExtendedId {
-    /// TWAI ID `0`, the highest priority.
-    pub const ZERO: Self = ExtendedId(0);
-
-    /// TWAI ID `0x1FFFFFFF`, the lowest priority.
-    pub const MAX: Self = ExtendedId(0x1FFF_FFFF);
-
-    /// Tries to create a `ExtendedId` from a raw 32-bit integer.
-    ///
-    /// This will return `None` if `raw` is out of range of an 29-bit integer
-    /// (`> 0x1FFF_FFFF`).
-    #[inline]
-    pub fn new(raw: u32) -> Option<Self> {
-        if raw <= 0x1FFF_FFFF {
-            Some(ExtendedId(raw))
-        } else {
-            None
-        }
-    }
-
-    /// Creates a new `ExtendedId` without checking if it is inside the valid
-    /// range.
-    ///
-    /// # Safety
-    /// Using this method can create an invalid ID and is thus marked as unsafe.
-    #[inline]
-    pub const unsafe fn new_unchecked(raw: u32) -> Self {
-        ExtendedId(raw)
-    }
-
-    /// Returns TWAI Identifier as a raw 32-bit integer.
-    #[inline]
-    pub fn as_raw(&self) -> u32 {
-        self.0
-    }
-
-    /// Returns the Base ID part of this extended identifier.
-    pub fn standard_id(&self) -> StandardId {
-        // ID-28 to ID-18
-        StandardId((self.0 >> 18) as u16)
-    }
-}
-
-#[instability::unstable]
-impl From<ExtendedId> for embedded_can::ExtendedId {
-    fn from(value: ExtendedId) -> Self {
-        embedded_can::ExtendedId::new(value.0).unwrap()
-    }
-}
-
-#[instability::unstable]
-impl From<embedded_can::ExtendedId> for ExtendedId {
-    fn from(value: embedded_can::ExtendedId) -> Self {
-        ExtendedId::new(value.as_raw()).unwrap()
-    }
-}
-
-/// A TWAI Identifier (standard or extended).
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum Id {
-    /// Standard 11-bit Identifier (`0..=0x7FF`).
-    Standard(StandardId),
-    /// Extended 29-bit Identifier (`0..=0x1FFF_FFFF`).
-    Extended(ExtendedId),
-}
-
-impl From<StandardId> for Id {
-    #[inline]
-    fn from(id: StandardId) -> Self {
-        Id::Standard(id)
-    }
-}
-
-impl From<ExtendedId> for Id {
-    #[inline]
-    fn from(id: ExtendedId) -> Self {
-        Id::Extended(id)
-    }
-}
-
-#[instability::unstable]
-impl From<Id> for embedded_can::Id {
-    fn from(value: Id) -> Self {
-        match value {
-            Id::Standard(id) => embedded_can::Id::Standard(id.into()),
-            Id::Extended(id) => embedded_can::Id::Extended(id.into()),
-        }
-    }
-}
-
-#[instability::unstable]
-impl From<embedded_can::Id> for Id {
-    fn from(value: embedded_can::Id) -> Self {
-        match value {
-            embedded_can::Id::Standard(id) => Id::Standard(id.into()),
-            embedded_can::Id::Extended(id) => Id::Extended(id.into()),
-        }
-    }
-}
-
 #[instability::unstable]
 impl embedded_can::Frame for EspTwaiFrame {
-    fn new(id: impl Into<embedded_can::Id>, data: &[u8]) -> Option<Self> {
+    fn new(id: impl Into<Id>, data: &[u8]) -> Option<Self> {
         Self::new(id.into(), data)
     }
 
-    fn new_remote(id: impl Into<embedded_can::Id>, dlc: usize) -> Option<Self> {
+    fn new_remote(id: impl Into<Id>, dlc: usize) -> Option<Self> {
         Self::new_remote(id.into(), dlc)
     }
 
@@ -424,8 +263,8 @@ impl embedded_can::Frame for EspTwaiFrame {
         self.is_remote_request()
     }
 
-    fn id(&self) -> embedded_can::Id {
-        self.identifier().into()
+    fn id(&self) -> Id {
+        self.identifier()
     }
 
     fn dlc(&self) -> usize {
